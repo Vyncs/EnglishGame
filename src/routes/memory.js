@@ -6,7 +6,7 @@ const router = Router();
 router.use(authMiddleware);
 
 // PUT /api/memory — substitui decks e hiddenDefaultDeckIds
-router.put('/', async (req, res) => {
+router.put('/', async (req, res, next) => {
   try {
     const { memoryDecks = [], hiddenDefaultDeckIds = [] } = req.body;
     const decks = JSON.stringify(Array.isArray(memoryDecks) ? memoryDecks : []);
@@ -18,8 +18,7 @@ router.put('/', async (req, res) => {
     });
     res.json({ ok: true });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao salvar dados de memória' });
+    next(e);
   }
 });
 

@@ -18,7 +18,7 @@ export function authMiddleware(req, res, next) {
         req.user = user;
         next();
       })
-      .catch(() => res.status(500).json({ error: 'Erro ao verificar usuário' }));
+      .catch((err) => next(err));
   } catch {
     return res.status(401).json({ error: 'Token inválido ou expirado' });
   }

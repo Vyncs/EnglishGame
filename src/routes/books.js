@@ -6,7 +6,7 @@ const router = Router();
 router.use(authMiddleware);
 
 // PUT /api/books — substitui lista de livros customizados
-router.put('/', async (req, res) => {
+router.put('/', async (req, res, next) => {
   try {
     const customBooks = Array.isArray(req.body.customBooks) ? req.body.customBooks : [];
     const books = JSON.stringify(customBooks);
@@ -17,8 +17,7 @@ router.put('/', async (req, res) => {
     });
     res.json({ ok: true });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao salvar livros' });
+    next(e);
   }
 });
 

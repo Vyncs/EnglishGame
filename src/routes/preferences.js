@@ -6,7 +6,7 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /api/preferences
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const prefs = await prisma.userPreferences.findUnique({
       where: { userId: req.user.id },
@@ -16,13 +16,12 @@ router.get('/', async (req, res) => {
       readerTheme: prefs?.readerTheme ?? 'light',
     });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao carregar preferências' });
+    next(e);
   }
 });
 
 // PUT /api/preferences
-router.put('/', async (req, res) => {
+router.put('/', async (req, res, next) => {
   try {
     const { selectedGroupId, readerTheme } = req.body;
     const data = {};
@@ -35,8 +34,7 @@ router.put('/', async (req, res) => {
     });
     res.json({ ok: true });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao salvar preferências' });
+    next(e);
   }
 });
 

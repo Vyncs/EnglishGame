@@ -23,7 +23,7 @@ export function toCardResponse(c) {
 }
 
 // GET /api/cards?groupId=xxx (opcional)
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const where = { userId: req.user.id };
     if (req.query.groupId) where.groupId = req.query.groupId;
@@ -33,13 +33,12 @@ router.get('/', async (req, res) => {
     });
     res.json(list.map(toCardResponse));
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao listar cards' });
+    next(e);
   }
 });
 
 // POST /api/cards
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   try {
     const {
       groupId,
@@ -73,13 +72,12 @@ router.post('/', async (req, res) => {
     });
     res.status(201).json(toCardResponse(card));
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao criar card' });
+    next(e);
   }
 });
 
 // PATCH /api/cards/:id
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', async (req, res, next) => {
   try {
     const card = await prisma.card.findFirst({
       where: { id: req.params.id, userId: req.user.id },
@@ -112,13 +110,12 @@ router.patch('/:id', async (req, res) => {
     });
     res.json(toCardResponse(updated));
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao atualizar card' });
+    next(e);
   }
 });
 
 // DELETE /api/cards/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const card = await prisma.card.findFirst({
       where: { id: req.params.id, userId: req.user.id },
@@ -127,8 +124,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.card.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao excluir card' });
+    next(e);
   }
 });
 

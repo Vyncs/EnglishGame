@@ -27,7 +27,7 @@ function getMercadoPagoPlan(plan) {
 }
 
 // POST /api/payments/create-checkout-session — Mercado Pago (preferência) ou Stripe | body: { plan?: 'monthly' | 'annual' }
-router.post('/create-checkout-session', authMiddleware, async (req, res) => {
+router.post('/create-checkout-session', authMiddleware, async (req, res, next) => {
   if (mercadopagoAccessToken) {
     try {
       const user = req.user;
@@ -86,8 +86,7 @@ router.post('/create-checkout-session', authMiddleware, async (req, res) => {
       if (!url) return res.status(500).json({ error: 'Mercado Pago não retornou URL de pagamento' });
       return res.json({ url });
     } catch (e) {
-      console.error(e);
-      return res.status(500).json({ error: 'Erro ao criar sessão de pagamento' });
+      next(e);
     }
   }
 
@@ -118,8 +117,7 @@ router.post('/create-checkout-session', authMiddleware, async (req, res) => {
       });
       return res.json({ url: session.url });
     } catch (e) {
-      console.error(e);
-      return res.status(500).json({ error: 'Erro ao criar sessão de pagamento' });
+      next(e);
     }
   }
 
@@ -154,7 +152,7 @@ router.get('/mercadopago/notification', async (req, res) => {
 
 // Endpoints de simulação só em dev: alternar entre assinante ativo e plano gratuito para testar disables de features
 if (process.env.NODE_ENV !== 'production') {
-  router.post('/mercadopago/simulate-notification', authMiddleware, async (req, res) => {
+  router.post('/mercadopago/simulate-notification', authMiddleware, async (req, res, next) => {
     if (!mercadopagoAccessToken) return res.status(503).json({ error: 'Mercado Pago não configurado' });
     try {
       await prisma.user.update({
@@ -163,11 +161,10 @@ if (process.env.NODE_ENV !== 'production') {
       });
       return res.json({ ok: true, message: 'Assinatura ativada (simulação)' });
     } catch (e) {
-      console.error(e);
-      return res.status(500).json({ error: 'Erro ao simular notificação' });
+      next(e);
     }
   });
-  router.post('/mercadopago/simulate-clear-subscription', authMiddleware, async (req, res) => {
+  router.post('/mercadopago/simulate-clear-subscription', authMiddleware, async (req, res, next) => {
     try {
       await prisma.user.update({
         where: { id: req.user.id },
@@ -175,14 +172,13 @@ if (process.env.NODE_ENV !== 'production') {
       });
       return res.json({ ok: true, message: 'Plano gratuito (simulação)' });
     } catch (e) {
-      console.error(e);
-      return res.status(500).json({ error: 'Erro ao simular plano gratuito' });
+      next(e);
     }
   });
 }
 
 // POST /api/payments/create-portal-session — Stripe Customer Portal ou mensagem MP
-router.post('/create-portal-session', authMiddleware, async (req, res) => {
+router.post('/create-portal-session', authMiddleware, async (req, res, next) => {
   if (mercadopagoAccessToken) {
     return res.status(400).json({
       error: 'Gerenciamento de assinatura pelo Mercado Pago: acesse sua conta no Mercado Pago ou app.',
@@ -202,8 +198,7 @@ router.post('/create-portal-session', authMiddleware, async (req, res) => {
     });
     res.json({ url: session.url });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao abrir portal' });
+    next(e);
   }
 });
 
@@ -248,7 +243,7 @@ export async function stripeWebhookHandler(req, res) {
     res.json({ received: true });
   } catch (e) {
     console.error('Webhook handler error:', e);
-    res.status(500).json({ error: 'Webhook handler failed' });
+    res.status(500).json({ error: 'Webhook handler failed', detail: e?.message });
   }
 }
 

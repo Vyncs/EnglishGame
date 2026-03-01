@@ -9,7 +9,7 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /api/sync — retorna groups, cards, memoryDecks, hiddenDefaultDeckIds, customBooks, preferences
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
     const [groups, cards, memoryData, customBooksRow, prefs] = await Promise.all([
@@ -52,8 +52,7 @@ router.get('/', async (req, res) => {
       readerTheme: prefs?.readerTheme ?? 'light',
     });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao sincronizar dados' });
+    next(e);
   }
 });
 

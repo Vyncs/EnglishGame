@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const JWT_EXPIRES = '7d';
 
 // POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', async (req, res, next) => {
   try {
     const { email, password, name } = req.body;
     if (!email || !password) {
@@ -31,13 +31,12 @@ router.post('/register', async (req, res) => {
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
     res.status(201).json({ user, token });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao criar conta' });
+    next(e);
   }
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -67,8 +66,7 @@ router.post('/login', async (req, res) => {
       token,
     });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao fazer login' });
+    next(e);
   }
 });
 

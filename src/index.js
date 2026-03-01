@@ -38,6 +38,16 @@ app.use('/api/payments', paymentsRouter);
 
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 
+// Middleware global de erro: todas as rotas que chamam next(e) caem aqui
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  const status = err.status ?? err.statusCode ?? 500;
+  res.status(status).json({
+    error: err.message || 'Erro interno',
+    detail: err.message,
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`API rodando em http://localhost:${PORT}`);
 });
