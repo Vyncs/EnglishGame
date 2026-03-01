@@ -1,0 +1,85 @@
+// Cópia do schema para PostgreSQL (usado no deploy no Render).
+// No Render: Build command inclui cp deste arquivo para schema.prisma antes de prisma generate.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?  // bcrypt hash; null para usuários só de login social
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Login social
+  googleId   String? @unique
+  appleId    String? @unique
+  facebookId String? @unique
+
+  // Assinatura (para integração com Stripe)
+  stripeCustomerId   String?   @unique
+  subscriptionStatus String?  // "active" | "canceled" | "past_due" | null = free
+  subscriptionEndsAt DateTime?
+
+  groups           Group[]
+  cards            Card[]
+  memoryData       UserMemoryData?
+  customBooks      UserCustomBooks?
+  preferences      UserPreferences?
+}
+
+model Group {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cards     Card[]
+}
+
+model Card {
+  id               String   @id @default(cuid())
+  groupId          String
+  group            Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portuguesePhrase String
+  englishPhrase    String
+  direction        String   @default("pt-en") // pt-en | en-pt
+  level            Int      @default(1)
+  lastReviewed     DateTime?
+  nextReview       DateTime
+  errorCount       Int      @default(0)
+  imageUrl         String?
+  tips             String?
+  createdAt        DateTime @default(now())
+}
+
+model UserMemoryData {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  decks                 String   // JSON: MemoryDeck[]
+  hiddenDefaultDeckIds  String   @default("[]") // JSON: string[]
+}
+
+model UserCustomBooks {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books  String @default("[]") // JSON: GradedBook[]
+}
+
+model UserPreferences {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedGroupId  String?
+  readerTheme      String   @default("light") // light | dark | sepia
+}

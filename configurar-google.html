@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configurar Google OAuth</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 1.25rem; }
+    .uri { background: #f1f5f9; padding: 12px 16px; border-radius: 8px; font-family: monospace; word-break: break-all; margin: 12px 0; }
+    button { background: #0ea5e9; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 1rem; }
+    button:hover { background: #0284c7; }
+    .ok { color: #15803d; margin-top: 8px; }
+    a { color: #0ea5e9; }
+    ol { line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <h1>Configurar Google Login (redirect_uri_mismatch)</h1>
+  <p>O backend já está certo. Cadastre a URL abaixo no Google Cloud.</p>
+
+  <p><strong>1. Copie esta URL:</strong></p>
+  <div class="uri" id="uri">http://localhost:3001/api/auth/google/callback</div>
+  <button type="button" id="copy">Copiar URL</button>
+  <span class="ok" id="feedback"></span>
+
+  <p><strong>2. Abra as credenciais no Google:</strong></p>
+  <p><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Abrir Google Cloud → Credenciais</a></p>
+
+  <p><strong>3. No Google Cloud:</strong></p>
+  <ol>
+    <li>Clique no seu cliente OAuth 2.0 (o que você usa no app).</li>
+    <li>O tipo tem que ser <strong>Aplicativo da Web</strong>. Se for "Aplicativo para computador", crie um novo cliente do tipo "Aplicativo da Web" e use o novo ID/secret no .env.</li>
+    <li>Em <strong>URIs de redirecionamento autorizados</strong> → <strong>+ ADICIONAR URI</strong>.</li>
+    <li>Cole a URL que você copiou (Ctrl+V) e salve.</li>
+  </ol>
+
+  <script>
+    document.getElementById('copy').onclick = function () {
+      var uri = document.getElementById('uri').textContent;
+      navigator.clipboard.writeText(uri).then(function () {
+        document.getElementById('feedback').textContent = 'Copiado.';
+      });
+    };
+  </script>
+</body>
+</html>
