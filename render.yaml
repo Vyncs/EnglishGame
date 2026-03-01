@@ -1,0 +1,26 @@
+# Render Blueprint – Backend English Cards
+# Conecte o repositório no Render e use New → Blueprint para criar serviço + Postgres de uma vez.
+# Variáveis sensíveis (JWT_SECRET, MERCADOPAGO_*, etc.) configure no Dashboard após criar.
+
+databases:
+  - name: english-cards-db
+    databaseName: english_cards
+    plan: free
+
+services:
+  - type: web
+    name: english-cards-api
+    runtime: node
+    rootDir: backend
+    region: oregon
+    buildCommand: npm install && cp prisma/schema.postgres.prisma prisma/schema.prisma && npx prisma generate
+    startCommand: npx prisma db push && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: english-cards-db
+          property: connectionString
+      # Defina no Dashboard: JWT_SECRET, FRONTEND_URL, API_URL
+      # Opcional: MERCADOPAGO_ACCESS_TOKEN, MERCADOPAGO_PLAN_PRICE_MONTHLY, MERCADOPAGO_PLAN_PRICE_ANNUAL, GOOGLE_CLIENT_ID
