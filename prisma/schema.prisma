@@ -1,10 +1,11 @@
-// SQLite em dev; use Postgres em produção (DATABASE_URL="postgresql://...")
+// Cópia do schema para PostgreSQL (usado no deploy no Render).
+// No Render: Build command inclui cp deste arquivo para schema.prisma antes de prisma generate.
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -60,7 +61,6 @@ model Card {
   createdAt        DateTime @default(now())
 }
 
-// Decks de memória + IDs de decks padrão ocultos (JSON)
 model UserMemoryData {
   id                    String   @id @default(cuid())
   userId                String   @unique
@@ -69,7 +69,6 @@ model UserMemoryData {
   hiddenDefaultDeckIds  String   @default("[]") // JSON: string[]
 }
 
-// Livros customizados (GradedBook[]) em JSON
 model UserCustomBooks {
   id     String @id @default(cuid())
   userId String @unique
@@ -77,7 +76,6 @@ model UserCustomBooks {
   books  String @default("[]") // JSON: GradedBook[]
 }
 
-// Preferências (selectedGroupId, readerTheme)
 model UserPreferences {
   id               String   @id @default(cuid())
   userId           String   @unique

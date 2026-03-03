@@ -6,9 +6,11 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "db:generate": "prisma generate",
+    "db:generate:postgres": "cp prisma/schema.postgres.prisma prisma/schema.prisma && prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "set-subscriber": "node scripts/set-subscriber.js"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",

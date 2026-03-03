@@ -56,4 +56,64 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// POST /api/sync/import — importação em massa (grupos + cards) para usuário logado
+// body: { mode: 'replace' | 'merge', groups: [{ name }], cards: [{ groupIndex, portuguesePhrase, englishPhrase, direction?, imageUrl?, tips? }] }
+// groupIndex = índice em groups[]; retorna { groups, cards } no formato do sync
+router.post('/import', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { mode = 'replace', groups = [], cards = [] } = req.body;
+    if (!Array.isArray(groups) || !Array.isArray(cards)) {
+      return res.status(400).json({ error: 'groups e cards devem ser arrays' });
+    }
+    const nextReview = new Date();
+
+    if (mode === 'replace') {
+      await prisma.group.deleteMany({ where: { userId } });
+    }
+
+    const createdGroups = [];
+    for (const g of groups) {
+      const name = g?.name && String(g.name).trim();
+      if (!name) continue;
+      const row = await prisma.group.create({
+        data: { name, userId },
+      });
+      createdGroups.push(row);
+    }
+
+    const createdCards = [];
+    for (const c of cards) {
+      const groupIndex = Number(c?.groupIndex);
+      if (groupIndex < 0 || groupIndex >= createdGroups.length) continue;
+      const groupId = createdGroups[groupIndex].id;
+      const portuguesePhrase = String(c?.portuguesePhrase ?? '').trim();
+      const englishPhrase = String(c?.englishPhrase ?? '').trim();
+      if (!portuguesePhrase || !englishPhrase) continue;
+      const direction = c?.direction === 'en-pt' ? 'en-pt' : 'pt-en';
+      const row = await prisma.card.create({
+        data: {
+          groupId,
+          userId,
+          portuguesePhrase,
+          englishPhrase,
+          direction,
+          level: 1,
+          nextReview,
+          imageUrl: c?.imageUrl?.trim() || null,
+          tips: c?.tips?.trim() || null,
+        },
+      });
+      createdCards.push(row);
+    }
+
+    res.status(201).json({
+      groups: createdGroups.map((g) => toGroupResponse(g)),
+      cards: createdCards.map((c) => toCardResponse(c)),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 export default router;
