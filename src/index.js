@@ -15,9 +15,14 @@ import adminRoutes from './routes/admin.js';
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+// CORS: aceita uma URL ou várias separadas por vírgula (ex: https://playfashcards.com.br,https://www.playfashcards.com.br)
+const corsOrigins = FRONTEND_URL.split(',').map((s) => s.trim()).filter(Boolean);
 
 // CORS
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+app.use(cors({
+  origin: corsOrigins.length > 1 ? corsOrigins : corsOrigins[0] || FRONTEND_URL,
+  credentials: true,
+}));
 
 // Webhook Stripe precisa do body bruto (antes de express.json())
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhookHandler);
