@@ -43,7 +43,7 @@ async function findOrCreateUser(provider, providerId, email, name) {
     if (existingByEmail) {
       const updated = await prisma.user.update({
         where: { id: existingByEmail.id },
-        data: { [providerField]: providerId, ...(name?.trim() && { name: name.trim() }) },
+        data: { [providerField]: providerId, emailVerified: true, ...(name?.trim() && { name: name.trim() }) },
         select: { id: true, email: true, name: true, createdAt: true, subscriptionStatus: true },
       });
       return updated;
@@ -57,6 +57,7 @@ async function findOrCreateUser(provider, providerId, email, name) {
       email: emailNorm,
       name: name?.trim() || null,
       password: null,
+      emailVerified: true,
       [providerField]: providerId,
     },
     select: { id: true, email: true, name: true, createdAt: true, subscriptionStatus: true },

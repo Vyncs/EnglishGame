@@ -10,6 +10,7 @@ import memoryRoutes from './routes/memory.js';
 import booksRoutes from './routes/books.js';
 import preferencesRoutes from './routes/preferences.js';
 import paymentsRouter, { stripeWebhookHandler } from './routes/payments.js';
+import adminRoutes from './routes/admin.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -35,6 +36,7 @@ app.use('/api/memory', memoryRoutes);
 app.use('/api/books', booksRoutes);
 app.use('/api/preferences', preferencesRoutes);
 app.use('/api/payments', paymentsRouter);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 

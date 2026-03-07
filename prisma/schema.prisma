@@ -14,8 +14,14 @@ model User {
   email     String   @unique
   password  String?  // bcrypt hash; null para usuários só de login social
   name      String?
+  role      String   @default("USER") // "USER" | "ADMIN"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Verificação de email
+  emailVerified              Boolean   @default(false)
+  verificationCode           String?
+  verificationCodeExpiresAt  DateTime?
 
   // Login social
   googleId   String? @unique

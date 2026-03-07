@@ -18,12 +18,12 @@ const mercadopagoAnnual = Number(process.env.MERCADOPAGO_PLAN_PRICE_ANNUAL) || 1
 
 function getMercadoPagoPlan(plan) {
   if (plan === 'annual') {
-    return { unit_price: Math.round(mercadopagoAnnual), title: 'English Cards - Pro Anual', id: 'english-cards-pro-anual' };
+    return { unit_price: Math.round(mercadopagoAnnual), title: 'Play Flash Cards - Pro Anual', id: 'play-flash-cards-pro-anual' };
   }
   // Mensal: enviar 19.99 (MP pode aceitar 2 decimais; se rejeitar, use MERCADOPAGO_PLAN_PRICE_MONTHLY=20)
   const monthlyPrice = Number(mercadopagoMonthly);
   const unitPrice = Number.isInteger(monthlyPrice) ? monthlyPrice : Math.round(monthlyPrice * 100) / 100;
-  return { unit_price: unitPrice, title: 'English Cards - Pro Mensal', id: 'english-cards-pro-mensal' };
+  return { unit_price: unitPrice, title: 'Play Flash Cards - Pro Mensal', id: 'play-flash-cards-pro-mensal' };
 }
 
 // POST /api/payments/create-checkout-session — Mercado Pago (preferência) ou Stripe | body: { plan?: 'monthly' | 'annual' }
