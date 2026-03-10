@@ -128,18 +128,16 @@ router.post('/create-checkout-session', authMiddleware, async (req, res, next) =
   });
 });
 
-// GET /api/payments/mercadopago/notification — notificação do Mercado Pago (topic=payment&id=...)
-router.get('/mercadopago/notification', async (req, res) => {
-  res.status(200).send();
-  const topic = req.query.topic;
-  const id = req.query.id;
-  if (!mercadopagoAccessToken || topic !== 'payment' || !id) return;
+// Processa pagamento aprovado do Mercado Pago e ativa a assinatura
+async function handleMercadoPagoPayment(paymentId) {
+  if (!mercadopagoAccessToken || !paymentId) return;
   try {
-    const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
+    const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: { Authorization: `Bearer ${mercadopagoAccessToken}` },
     });
     if (!payRes.ok) return;
     const payment = await payRes.json();
+    console.log(`MP notification: payment ${paymentId} status=${payment.status} ref=${payment.external_reference}`);
     if (payment.status !== 'approved') return;
     const userId = payment.external_reference;
     if (!userId) return;
@@ -147,8 +145,32 @@ router.get('/mercadopago/notification', async (req, res) => {
       where: { id: userId },
       data: { subscriptionStatus: 'active' },
     });
+    console.log(`MP: assinatura ativada para userId=${userId}`);
   } catch (e) {
     console.error('Mercado Pago notification error:', e);
+  }
+}
+
+// GET /api/payments/mercadopago/notification — IPN (topic=payment&id=...)
+router.get('/mercadopago/notification', async (req, res) => {
+  res.status(200).send();
+  const { topic, id } = req.query;
+  if (topic === 'payment' && id) {
+    await handleMercadoPagoPayment(id);
+  }
+});
+
+// POST /api/payments/mercadopago/notification — Webhooks v2 (body: { action, data.id })
+router.post('/mercadopago/notification', async (req, res) => {
+  res.status(200).send();
+  const { action, data } = req.body || {};
+  if (action === 'payment.created' || action === 'payment.updated') {
+    await handleMercadoPagoPayment(data?.id);
+  }
+  // IPN via POST (topic como query param)
+  const { topic, id } = req.query;
+  if (topic === 'payment' && id) {
+    await handleMercadoPagoPayment(id);
   }
 });
 
