@@ -4,7 +4,8 @@ import prisma from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+// Usa apenas o primeiro domínio para back_urls (FRONTEND_URL pode ter vários separados por vírgula para CORS)
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
 const API_URL = process.env.API_URL || 'http://localhost:3001';
 
 const stripe = process.env.STRIPE_SECRET_KEY

@@ -12,7 +12,7 @@ import prisma from '../db.js';
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const JWT_EXPIRES = '7d';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
 
 function redirectWithToken(res, token, error = null) {
   const url = new URL(FRONTEND_URL);
