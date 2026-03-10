@@ -83,7 +83,8 @@ router.post('/create-checkout-session', authMiddleware, async (req, res, next) =
         });
       }
       const data = await mpRes.json();
-      const url = data.sandbox_init_point || data.init_point;
+      const isTest = (process.env.MERCADOPAGO_ACCESS_TOKEN || '').startsWith('TEST-');
+      const url = isTest ? (data.sandbox_init_point || data.init_point) : (data.init_point || data.sandbox_init_point);
       if (!url) return res.status(500).json({ error: 'Mercado Pago não retornou URL de pagamento' });
       return res.json({ url });
     } catch (e) {
