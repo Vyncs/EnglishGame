@@ -23,7 +23,7 @@ export async function listUsers({ search, status, page = 1, limit = 20 }) {
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: {
-        id: true, email: true, name: true, role: true,
+        id: true, email: true, name: true, role: true, couponCode: true,
         subscriptionStatus: true, subscriptionEndsAt: true,
         emailVerified: true, createdAt: true, updatedAt: true,
         _count: { select: { cards: true, groups: true } },
@@ -33,16 +33,24 @@ export async function listUsers({ search, status, page = 1, limit = 20 }) {
   ]);
 
   return {
-    users: users.map(u => ({
+    users: users.map(({ _count, ...u }) => ({
       ...u,
-      cardsCount: u._count.cards,
-      groupsCount: u._count.groups,
-      _count: undefined,
+      cardsCount: _count.cards,
+      groupsCount: _count.groups,
     })),
     total,
     page,
     totalPages: Math.ceil(total / limit),
   };
+}
+
+function generateCouponCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 7; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
 }
 
 export async function updateUser(id, data) {
@@ -51,12 +59,32 @@ export async function updateUser(id, data) {
   if (data.role !== undefined) allowed.role = data.role;
   if (data.subscriptionStatus !== undefined) allowed.subscriptionStatus = data.subscriptionStatus || null;
   if (data.emailVerified !== undefined) allowed.emailVerified = data.emailVerified;
+  if (data.couponCode !== undefined) allowed.couponCode = data.couponCode || null;
+
+  // Auto-gerar cupom ao promover para TEACHER se não fornecido
+  if (data.role === 'TEACHER' && !data.couponCode) {
+    const currentUser = await prisma.user.findUnique({ where: { id }, select: { couponCode: true } });
+    if (!currentUser?.couponCode) {
+      let code;
+      let exists = true;
+      while (exists) {
+        code = generateCouponCode();
+        exists = !!(await prisma.user.findUnique({ where: { couponCode: code } }));
+      }
+      allowed.couponCode = code;
+    }
+  }
+
+  // Limpar cupom se rebaixar de TEACHER
+  if (data.role && data.role !== 'TEACHER') {
+    allowed.couponCode = null;
+  }
 
   return prisma.user.update({
     where: { id },
     data: allowed,
     select: {
-      id: true, email: true, name: true, role: true,
+      id: true, email: true, name: true, role: true, couponCode: true,
       subscriptionStatus: true, subscriptionEndsAt: true,
       emailVerified: true, createdAt: true, updatedAt: true,
     },

@@ -31,6 +31,22 @@ export function adminOnly(req, res, next) {
   next();
 }
 
+export function teacherOnly(req, res, next) {
+  if (!req.user || (req.user.role !== 'TEACHER' && req.user.role !== 'ADMIN')) {
+    return res.status(403).json({ error: 'Acesso restrito a professores' });
+  }
+  next();
+}
+
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Acesso não autorizado' });
+    }
+    next();
+  };
+}
+
 export function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

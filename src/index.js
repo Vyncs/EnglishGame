@@ -11,6 +11,8 @@ import booksRoutes from './routes/books.js';
 import preferencesRoutes from './routes/preferences.js';
 import paymentsRouter, { stripeWebhookHandler } from './routes/payments.js';
 import adminRoutes from './routes/admin.js';
+import teacherRoutes from './routes/teacher.js';
+import studentRoutes from './routes/student.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -42,6 +44,8 @@ app.use('/api/books', booksRoutes);
 app.use('/api/preferences', preferencesRoutes);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/admin', adminRoutes);
+app.use('/api/teacher', teacherRoutes);
+app.use('/api/student', studentRoutes);
 
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 

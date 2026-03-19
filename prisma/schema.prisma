@@ -14,7 +14,8 @@ model User {
   email     String   @unique
   password  String?  // bcrypt hash; null para usuários só de login social
   name      String?
-  role      String   @default("USER") // "USER" | "ADMIN"
+  role      String   @default("USER") // "USER" | "ADMIN" | "TEACHER"
+  couponCode String? @unique // Código único do professor para vincular alunos
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -33,11 +34,55 @@ model User {
   subscriptionStatus String?  // "active" | "canceled" | "past_due" | null = free
   subscriptionEndsAt DateTime?
 
+  // Cupom usado no cadastro (para vincular ao professor após verificação)
+  pendingCouponCode  String?
+
   groups           Group[]
   cards            Card[]
   memoryData       UserMemoryData?
   customBooks      UserCustomBooks?
   preferences      UserPreferences?
+  teacherStudents  TeacherStudent[] @relation("TeacherStudents")
+  studentTeachers  TeacherStudent[] @relation("StudentTeachers")
+  materials        TeacherMaterial[]
+  assignedMaterials MaterialAssignment[]
+}
+
+model TeacherStudent {
+  id        String   @id @default(cuid())
+  teacherId String
+  teacher   User     @relation("TeacherStudents", fields: [teacherId], references: [id], onDelete: Cascade)
+  studentId String
+  student   User     @relation("StudentTeachers", fields: [studentId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+
+  @@unique([teacherId, studentId])
+}
+
+model TeacherMaterial {
+  id          String   @id @default(cuid())
+  teacherId   String
+  teacher     User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  type        String   // "link" | "text" | "video" | "file"
+  url         String?
+  content     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments MaterialAssignment[]
+}
+
+model MaterialAssignment {
+  id         String   @id @default(cuid())
+  materialId String
+  material   TeacherMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([materialId, studentId])
 }
 
 model Group {

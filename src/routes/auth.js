@@ -12,12 +12,25 @@ const JWT_EXPIRES = '7d';
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, couponCode } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email e senha são obrigatórios' });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+    }
+
+    // Validar cupom do professor (se fornecido)
+    let validCoupon = null;
+    if (couponCode && couponCode.trim()) {
+      const teacher = await prisma.user.findFirst({
+        where: { couponCode: couponCode.trim().toUpperCase(), role: 'TEACHER' },
+        select: { id: true },
+      });
+      if (!teacher) {
+        return res.status(400).json({ error: 'Cupom de professor inválido' });
+      }
+      validCoupon = couponCode.trim().toUpperCase();
     }
 
     const emailNorm = email.trim().toLowerCase();
@@ -39,6 +52,7 @@ router.post('/register', async (req, res, next) => {
           name: name?.trim() || existing.name,
           verificationCode: code,
           verificationCodeExpiresAt: codeExpires,
+          pendingCouponCode: validCoupon || existing.pendingCouponCode,
         },
       });
     } else {
@@ -50,6 +64,7 @@ router.post('/register', async (req, res, next) => {
           emailVerified: false,
           verificationCode: code,
           verificationCodeExpiresAt: codeExpires,
+          pendingCouponCode: validCoupon || null,
         },
       });
     }
@@ -107,9 +122,27 @@ router.post('/verify-email', async (req, res, next) => {
         emailVerified: true,
         verificationCode: null,
         verificationCodeExpiresAt: null,
+        pendingCouponCode: null,
       },
       select: { id: true, email: true, name: true, role: true, createdAt: true, subscriptionStatus: true },
     });
+
+    // Vincular aluno ao professor se houver cupom pendente
+    if (user.pendingCouponCode) {
+      try {
+        const teacher = await prisma.user.findFirst({
+          where: { couponCode: user.pendingCouponCode, role: 'TEACHER' },
+          select: { id: true },
+        });
+        if (teacher) {
+          await prisma.teacherStudent.create({
+            data: { teacherId: teacher.id, studentId: updated.id },
+          }).catch(() => {});
+        }
+      } catch {
+        // Não bloquear o registro se falhar o vínculo
+      }
+    }
 
     const token = jwt.sign({ userId: updated.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
     res.json({ user: updated, token });
@@ -204,6 +237,23 @@ router.post('/login', async (req, res, next) => {
       },
       token,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/auth/validate-coupon?code=XXXX (público)
+router.get('/validate-coupon', async (req, res, next) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.json({ valid: false });
+
+    const teacher = await prisma.user.findFirst({
+      where: { couponCode: code.trim().toUpperCase(), role: 'TEACHER' },
+      select: { name: true },
+    });
+
+    res.json({ valid: !!teacher, teacherName: teacher?.name || null });
   } catch (e) {
     next(e);
   }
