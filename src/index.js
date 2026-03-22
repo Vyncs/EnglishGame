@@ -15,6 +15,7 @@ import teacherRoutes from './routes/teacher.js';
 import studentRoutes from './routes/student.js';
 
 const app = express();
+const serverStartedAt = Date.now();
 const PORT = Number(process.env.PORT) || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 // CORS: aceita uma URL ou várias separadas por vírgula (ex: https://playfashcards.com.br,https://www.playfashcards.com.br)
@@ -47,7 +48,17 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/student', studentRoutes);
 
-app.get('/api/health', (_, res) => res.json({ ok: true }));
+/** Resposta leve (sem DB) — use em ping/cron e monitores (ex.: Render free). */
+function sendHealth(_req, res) {
+  res.json({
+    ok: true,
+    service: 'play-flash-cards-api',
+    ts: new Date().toISOString(),
+    uptimeSec: Math.floor((Date.now() - serverStartedAt) / 1000),
+  });
+}
+app.get('/health', sendHealth);
+app.get('/api/health', sendHealth);
 
 // Middleware global de erro: todas as rotas que chamam next(e) caem aqui
 app.use((err, _req, res, _next) => {

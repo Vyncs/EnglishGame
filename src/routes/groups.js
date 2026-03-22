@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { isPremiumUser, FREE_MAX_GROUPS } from '../utils/subscription.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -32,6 +33,15 @@ router.post('/', async (req, res, next) => {
     const { name } = req.body;
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Nome é obrigatório' });
+    }
+    if (!isPremiumUser(req.user)) {
+      const n = await prisma.group.count({ where: { userId: req.user.id } });
+      if (n >= FREE_MAX_GROUPS) {
+        return res.status(403).json({
+          error: `Plano free: no máximo ${FREE_MAX_GROUPS} grupos. Assine para criar mais.`,
+          code: 'FREE_GROUP_LIMIT',
+        });
+      }
     }
     const group = await prisma.group.create({
       data: { name: name.trim(), userId: req.user.id },

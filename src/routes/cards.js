@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { isPremiumUser, FREE_MAX_CARDS_PER_GROUP } from '../utils/subscription.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -55,6 +56,15 @@ router.post('/', async (req, res, next) => {
       where: { id: groupId, userId: req.user.id },
     });
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
+    if (!isPremiumUser(req.user)) {
+      const inGroup = await prisma.card.count({ where: { userId: req.user.id, groupId } });
+      if (inGroup >= FREE_MAX_CARDS_PER_GROUP) {
+        return res.status(403).json({
+          error: `Plano free: no máximo ${FREE_MAX_CARDS_PER_GROUP} cards por grupo. Assine para adicionar mais.`,
+          code: 'FREE_CARD_LIMIT',
+        });
+      }
+    }
     // Novos cards ficam disponíveis para revisão imediatamente (nextReview = agora)
     const nextReview = new Date();
     const card = await prisma.card.create({

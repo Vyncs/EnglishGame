@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import prisma from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { isPremiumUser } from '../utils/subscription.js';
 import { toGroupResponse } from './groups.js';
 import { toCardResponse } from './cards.js';
 
@@ -61,6 +62,12 @@ router.get('/', async (req, res, next) => {
 // groupIndex = índice em groups[]; retorna { groups, cards } no formato do sync
 router.post('/import', async (req, res, next) => {
   try {
+    if (!isPremiumUser(req.user)) {
+      return res.status(403).json({
+        error: 'Importação disponível apenas para assinantes. Faça upgrade no menu Conta.',
+        code: 'IMPORT_PREMIUM_ONLY',
+      });
+    }
     const userId = req.user.id;
     const { mode = 'replace', groups = [], cards = [] } = req.body;
     if (!Array.isArray(groups) || !Array.isArray(cards)) {
