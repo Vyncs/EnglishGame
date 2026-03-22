@@ -13,6 +13,7 @@ export async function listUsers({ search, status, page = 1, limit = 20 }) {
   }
 
   if (status === 'active') where.subscriptionStatus = 'active';
+  else if (status === 'vip') where.subscriptionStatus = 'vip';
   else if (status === 'free') where.subscriptionStatus = null;
   else if (status === 'canceled') where.subscriptionStatus = { in: ['canceled', 'past_due'] };
 
@@ -61,8 +62,8 @@ export async function updateUser(id, data) {
   if (data.emailVerified !== undefined) allowed.emailVerified = data.emailVerified;
   if (data.couponCode !== undefined) allowed.couponCode = data.couponCode || null;
 
-  // Auto-gerar cupom ao promover para TEACHER se não fornecido
-  if (data.role === 'TEACHER' && !data.couponCode) {
+  // Auto-gerar cupom ao promover para professor (TEACHER ou ADMIN) se não fornecido
+  if ((data.role === 'TEACHER' || data.role === 'ADMIN') && !data.couponCode) {
     const currentUser = await prisma.user.findUnique({ where: { id }, select: { couponCode: true } });
     if (!currentUser?.couponCode) {
       let code;
@@ -75,8 +76,8 @@ export async function updateUser(id, data) {
     }
   }
 
-  // Limpar cupom se rebaixar de TEACHER
-  if (data.role && data.role !== 'TEACHER') {
+  // Limpar cupom só ao rebaixar para papel que não é professor (ex.: USER)
+  if (data.role && data.role !== 'TEACHER' && data.role !== 'ADMIN') {
     allowed.couponCode = null;
   }
 
@@ -112,6 +113,7 @@ export async function getFinancialMetrics() {
     newPaidThisMonth,
     prevMonthActive,
     totalUsers,
+    vipUsers,
   ] = await Promise.all([
     prisma.user.count({ where: { subscriptionStatus: 'active' } }),
     prisma.user.count({
@@ -124,6 +126,7 @@ export async function getFinancialMetrics() {
       where: { subscriptionStatus: 'active', createdAt: { lte: endOfPrevMonth } },
     }),
     prisma.user.count(),
+    prisma.user.count({ where: { subscriptionStatus: 'vip' } }),
   ]);
 
   const mrr = activeSubscriptions * MONTHLY_PRICE;
@@ -158,6 +161,7 @@ export async function getFinancialMetrics() {
     mrr: Math.round(mrr * 100) / 100,
     arr: Math.round(arr * 100) / 100,
     activeSubscriptions,
+    vipUsers,
     canceledThisMonth,
     newPaidThisMonth,
     churnRate: Math.round(churnRate * 10) / 10,
@@ -182,6 +186,8 @@ export async function getDashboardMetrics() {
     newUsersThisMonth,
     newUsersPrevMonth,
     paidUsers,
+    vipUsers,
+    freeTierUsers,
     canceledThisMonth,
     paidPrevMonth,
     totalCards,
@@ -194,6 +200,8 @@ export async function getDashboardMetrics() {
     prisma.user.count({ where: { createdAt: { gte: startOfMonth } } }),
     prisma.user.count({ where: { createdAt: { gte: startOfPrevMonth, lte: endOfPrevMonth } } }),
     prisma.user.count({ where: { subscriptionStatus: 'active' } }),
+    prisma.user.count({ where: { subscriptionStatus: 'vip' } }),
+    prisma.user.count({ where: { subscriptionStatus: null } }),
     prisma.user.count({
       where: {
         subscriptionStatus: { in: ['canceled', 'past_due'] },
@@ -231,7 +239,8 @@ export async function getDashboardMetrics() {
       totalUsers,
       newUsersThisMonth,
       paidUsers,
-      freeUsers: totalUsers - paidUsers,
+      vipUsers,
+      freeUsers: freeTierUsers,
       conversionRate: Math.round(conversionRate * 10) / 10,
       growthRate: Math.round(growthRate * 10) / 10,
     },

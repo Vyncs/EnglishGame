@@ -9,6 +9,9 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const JWT_EXPIRES = '7d';
 
+/** Professores podem ser TEACHER ou ADMIN (ambos acessam o painel do professor). */
+const TEACHER_ROLES = { in: ['TEACHER', 'ADMIN'] };
+
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
   try {
@@ -24,7 +27,7 @@ router.post('/register', async (req, res, next) => {
     let validCoupon = null;
     if (couponCode && couponCode.trim()) {
       const teacher = await prisma.user.findFirst({
-        where: { couponCode: couponCode.trim().toUpperCase(), role: 'TEACHER' },
+        where: { couponCode: couponCode.trim().toUpperCase(), role: TEACHER_ROLES },
         select: { id: true },
       });
       if (!teacher) {
@@ -116,14 +119,21 @@ router.post('/verify-email', async (req, res, next) => {
       return res.status(400).json({ error: 'Código expirado. Solicite um novo.' });
     }
 
+    const hadCoupon = !!user.pendingCouponCode;
+    const updateData = {
+      emailVerified: true,
+      verificationCode: null,
+      verificationCodeExpiresAt: null,
+      pendingCouponCode: null,
+    };
+    // Cupom de professor: acesso VIP (não substitui quem já paga Premium)
+    if (hadCoupon && user.subscriptionStatus !== 'active') {
+      updateData.subscriptionStatus = 'vip';
+    }
+
     const updated = await prisma.user.update({
       where: { id: user.id },
-      data: {
-        emailVerified: true,
-        verificationCode: null,
-        verificationCodeExpiresAt: null,
-        pendingCouponCode: null,
-      },
+      data: updateData,
       select: { id: true, email: true, name: true, role: true, createdAt: true, subscriptionStatus: true },
     });
 
@@ -131,7 +141,7 @@ router.post('/verify-email', async (req, res, next) => {
     if (user.pendingCouponCode) {
       try {
         const teacher = await prisma.user.findFirst({
-          where: { couponCode: user.pendingCouponCode, role: 'TEACHER' },
+          where: { couponCode: user.pendingCouponCode, role: TEACHER_ROLES },
           select: { id: true },
         });
         if (teacher) {
@@ -249,7 +259,7 @@ router.get('/validate-coupon', async (req, res, next) => {
     if (!code) return res.json({ valid: false });
 
     const teacher = await prisma.user.findFirst({
-      where: { couponCode: code.trim().toUpperCase(), role: 'TEACHER' },
+      where: { couponCode: code.trim().toUpperCase(), role: TEACHER_ROLES },
       select: { name: true },
     });
 

@@ -31,7 +31,7 @@ model User {
 
   // Assinatura (para integração com Stripe)
   stripeCustomerId   String?   @unique
-  subscriptionStatus String?  // "active" | "canceled" | "past_due" | null = free
+  subscriptionStatus String?  // "active" (pago) | "vip" (acesso cortesia, ex. cupom) | "canceled" | "past_due" | null = free
   subscriptionEndsAt DateTime?
 
   // Cupom usado no cadastro (para vincular ao professor após verificação)
