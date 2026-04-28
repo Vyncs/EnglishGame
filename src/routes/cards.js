@@ -2,6 +2,13 @@ import { Router } from 'express';
 import prisma from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { isPremiumUser, FREE_MAX_CARDS_PER_GROUP } from '../utils/subscription.js';
+import { computeReviewXp, awardXp } from '../services/xpService.js';
+import { logActivity } from '../services/streakService.js';
+import {
+  updateProgress as updateMissionProgress,
+  resetCorrectStreak,
+} from '../services/missionService.js';
+import { getUserTimezone } from '../services/timeService.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -80,6 +87,18 @@ router.post('/', async (req, res, next) => {
         tips: tips?.trim() || null,
       },
     });
+    // Hook: progresso da missão "create_cards" (best-effort)
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { preferences: { select: { timezone: true } } },
+      });
+      const tz = getUserTimezone(user);
+      await updateMissionProgress(req.user.id, 'create_cards', 1, tz);
+    } catch (e) {
+      console.error('mission create_cards hook failed:', e);
+    }
+
     res.status(201).json(toCardResponse(card));
   } catch (e) {
     next(e);
@@ -118,11 +137,90 @@ router.patch('/:id', async (req, res, next) => {
       where: { id: req.params.id },
       data,
     });
+
+    // ----- Retention hooks (best-effort, não bloqueiam a resposta) -----
+    // Detecta se este PATCH foi uma REVISÃO (lastReviewed mudou).
+    const isReview = data.lastReviewed !== undefined;
+    if (isReview) {
+      const oldLevel = card.level ?? 1;
+      const newLevel = updated.level ?? 1;
+      const errorCountIncreased =
+        data.errorCount !== undefined && data.errorCount > (card.errorCount ?? 0);
+      const wasCorrect = !errorCountIncreased;
+
+      const xpAmount = computeReviewXp({ oldLevel, newLevel, errorCountIncreased });
+      const retentionResult = await runRetentionHooks(req.user.id, {
+        wasCorrect,
+        promoted: newLevel > oldLevel,
+        mastered: newLevel === 5 && oldLevel < 5,
+        xpAmount,
+      });
+      // Inclui resultado de XP/streak/mission no response — frontend usa pra UX.
+      return res.json({ ...toCardResponse(updated), retention: retentionResult });
+    }
+
     res.json(toCardResponse(updated));
   } catch (e) {
     next(e);
   }
 });
+
+/**
+ * Executa hooks de retenção pós-review. Sempre retorna um objeto, mesmo
+ * em caso de erro (best-effort — falhas não devem quebrar a review).
+ */
+async function runRetentionHooks(userId, { wasCorrect, promoted, mastered, xpAmount }) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { preferences: { select: { timezone: true } } },
+    });
+    const tz = getUserTimezone(user);
+
+    // 1. Loga atividade no contador do dia
+    await logActivity(
+      userId,
+      {
+        cardsReviewed: 1,
+        cardsCorrect: wasCorrect ? 1 : 0,
+        xpEarned: xpAmount,
+      },
+      tz
+    );
+
+    // 2. Atualiza progresso de missões aplicáveis
+    if (wasCorrect) {
+      await updateMissionProgress(userId, 'review_cards', 1, tz);
+      await updateMissionProgress(userId, 'correct_streak', 1, tz);
+      if (mastered) {
+        await updateMissionProgress(userId, 'master_card', 1, tz);
+      }
+    } else {
+      // Errou — zera correct_streak da missão
+      await resetCorrectStreak(userId, tz);
+    }
+
+    // 3. Awards XP (com multiplicador de streak)
+    let xpResult = null;
+    if (xpAmount > 0) {
+      xpResult = await awardXp(userId, xpAmount);
+      // Conta o cardsReviewed lifetime
+      await prisma.userProgress.update({
+        where: { userId },
+        data: { totalCardsReviewed: { increment: 1 } },
+      });
+    }
+
+    return {
+      xp: xpResult,
+      promoted,
+      mastered,
+    };
+  } catch (e) {
+    console.error('runRetentionHooks failed:', e);
+    return { xp: null, error: 'retention_hook_failed' };
+  }
+}
 
 // DELETE /api/cards/:id
 router.delete('/:id', async (req, res, next) => {

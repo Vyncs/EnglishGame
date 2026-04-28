@@ -8,9 +8,10 @@ import { Strategy as FacebookStrategy } from 'passport-facebook';
 import AppleStrategy from 'passport-apple';
 import jwt from 'jsonwebtoken';
 import prisma from '../db.js';
+import { getJwtSecret } from '../utils/env.js';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const JWT_SECRET = getJwtSecret();
 const JWT_EXPIRES = '7d';
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
 

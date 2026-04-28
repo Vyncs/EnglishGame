@@ -4,16 +4,23 @@ import jwt from 'jsonwebtoken';
 import prisma from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { generateVerificationCode, getCodeExpiration, sendVerificationEmail } from '../services/emailService.js';
+import { getJwtSecret } from '../utils/env.js';
+import {
+  loginLimiter,
+  registerLimiter,
+  verifyEmailLimiter,
+  resendVerificationLimiter,
+} from '../middleware/rateLimit.js';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const JWT_SECRET = getJwtSecret();
 const JWT_EXPIRES = '7d';
 
 /** Professores podem ser TEACHER ou ADMIN (ambos acessam o painel do professor). */
 const TEACHER_ROLES = { in: ['TEACHER', 'ADMIN'] };
 
 // POST /api/auth/register
-router.post('/register', async (req, res, next) => {
+router.post('/register', registerLimiter, async (req, res, next) => {
   try {
     const { email, password, name, couponCode } = req.body;
     if (!email || !password) {
@@ -92,7 +99,7 @@ router.post('/register', async (req, res, next) => {
 });
 
 // POST /api/auth/verify-email
-router.post('/verify-email', async (req, res, next) => {
+router.post('/verify-email', verifyEmailLimiter, async (req, res, next) => {
   try {
     const { email, code } = req.body;
     if (!email || !code) {
@@ -162,7 +169,7 @@ router.post('/verify-email', async (req, res, next) => {
 });
 
 // POST /api/auth/resend-verification
-router.post('/resend-verification', async (req, res, next) => {
+router.post('/resend-verification', resendVerificationLimiter, async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -201,7 +208,7 @@ router.post('/resend-verification', async (req, res, next) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {

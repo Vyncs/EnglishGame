@@ -2,6 +2,8 @@ import { Router } from 'express';
 import Stripe from 'stripe';
 import prisma from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { devEndpointsEnabled } from '../utils/env.js';
+import { evaluateMercadoPagoEvent } from '../utils/paymentEvaluator.js';
 
 const router = Router();
 // Usa apenas o primeiro domínio para back_urls (FRONTEND_URL pode ter vários separados por vírgula para CORS)
@@ -50,7 +52,9 @@ router.post('/create-checkout-session', authMiddleware, async (req, res, next) =
           failure: `${FRONTEND_URL}/conta?canceled=true`,
           pending: `${FRONTEND_URL}/conta?pending=true`,
         },
-        external_reference: String(user.id),
+        // Encode "userId:plan" para que o webhook saiba qual plano foi pago.
+        // Fallback no parser: se não houver ":", trata como monthly (compat. com pagamentos antigos).
+        external_reference: `${user.id}:${plan}`,
       };
       // auto_return só com HTTPS; em dev (http/localhost) o MP rejeita com "back_url.success must be defined"
       if (FRONTEND_URL.startsWith('https://')) {
@@ -128,24 +132,102 @@ router.post('/create-checkout-session', authMiddleware, async (req, res, next) =
   });
 });
 
-// Processa pagamento aprovado do Mercado Pago e ativa a assinatura
+/**
+ * Log estruturado de eventos críticos de pagamento.
+ * Mantém auditoria sem depender de uma tabela ActivityLog (Sprint 1).
+ *
+ * Formato JSON-line para fácil parsing pelos logs do Render.
+ */
+function logPaymentEvent(event) {
+  console.log(JSON.stringify({ scope: 'mercadopago', ts: new Date().toISOString(), ...event }));
+}
+
+// Busca payment na API do MP, decide a ação via função pura, aplica.
 async function handleMercadoPagoPayment(paymentId) {
   if (!mercadopagoAccessToken || !paymentId) return;
   try {
     const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: { Authorization: `Bearer ${mercadopagoAccessToken}` },
     });
-    if (!payRes.ok) return;
+    if (!payRes.ok) {
+      logPaymentEvent({ event: 'fetch_failed', paymentId, httpStatus: payRes.status });
+      return;
+    }
     const payment = await payRes.json();
-    console.log(`MP notification: payment ${paymentId} status=${payment.status} ref=${payment.external_reference}`);
-    if (payment.status !== 'approved') return;
-    const userId = payment.external_reference;
-    if (!userId) return;
-    await prisma.user.update({
-      where: { id: userId },
-      data: { subscriptionStatus: 'active' },
+    const externalRef = payment?.external_reference || null;
+
+    // Para descobrir o user precisamos do external_reference.
+    // O evaluator também faz essa parse, mas precisamos do userId para buscar no DB.
+    const refUserId = externalRef ? String(externalRef).split(':')[0] : null;
+    if (!refUserId) {
+      logPaymentEvent({ event: 'noop', paymentId, status: payment.status, reason: 'no_external_reference' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: refUserId },
+      select: {
+        id: true,
+        subscriptionStatus: true,
+        subscriptionEndsAt: true,
+        lastPaymentId: true,
+      },
     });
-    console.log(`MP: assinatura ativada para userId=${userId}`);
+
+    const action = evaluateMercadoPagoEvent({
+      payment,
+      user,
+      paymentId: String(paymentId),
+    });
+
+    if (action.kind === 'noop') {
+      logPaymentEvent({
+        event: 'noop',
+        paymentId,
+        status: payment.status,
+        userId: refUserId,
+        reason: action.reason,
+      });
+      return;
+    }
+
+    if (action.kind === 'activate') {
+      await prisma.user.update({
+        where: { id: action.userId },
+        data: {
+          subscriptionStatus: 'active',
+          subscriptionEndsAt: action.endsAt,
+          lastPaymentId: action.paymentId,
+        },
+      });
+      logPaymentEvent({
+        event: 'activated',
+        paymentId: action.paymentId,
+        userId: action.userId,
+        plan: action.plan,
+        endsAt: action.endsAt.toISOString(),
+      });
+      return;
+    }
+
+    if (action.kind === 'downgrade') {
+      // Rebaixamento imediato: subscriptionStatus null + endsAt = now.
+      // Mantemos lastPaymentId para histórico/auditoria.
+      await prisma.user.update({
+        where: { id: action.userId },
+        data: {
+          subscriptionStatus: null,
+          subscriptionEndsAt: new Date(),
+        },
+      });
+      logPaymentEvent({
+        event: 'downgraded',
+        paymentId: action.paymentId,
+        userId: action.userId,
+        reason: action.reason, // 'refunded' | 'charged_back' | 'cancelled'
+      });
+      return;
+    }
   } catch (e) {
     console.error('Mercado Pago notification error:', e);
   }
@@ -174,8 +256,11 @@ router.post('/mercadopago/notification', async (req, res) => {
   }
 });
 
-// Endpoints de simulação só em dev: alternar entre assinante ativo e plano gratuito para testar disables de features
-if (process.env.NODE_ENV !== 'production') {
+// Endpoints de simulação só em DEV com OPT-IN explícito.
+// Requer NODE_ENV != production E ENABLE_DEV_ENDPOINTS=true.
+// Em produção (ou sem opt-in), retornam 404 — não vazam para a superfície de ataque.
+if (devEndpointsEnabled()) {
+  console.warn('⚠️  [payments] Endpoints /simulate-* HABILITADOS (dev opt-in). NÃO use em produção.');
   router.post('/mercadopago/simulate-notification', authMiddleware, async (req, res, next) => {
     if (!mercadopagoAccessToken) return res.status(503).json({ error: 'Mercado Pago não configurado' });
     try {
@@ -247,9 +332,30 @@ export async function stripeWebhookHandler(req, res) {
       const session = event.data.object;
       const userId = session.metadata?.userId || session.subscription_data?.metadata?.userId;
       if (userId) {
+        // Buscar a subscription para pegar a data real de fim do período.
+        let endsAt = null;
+        if (session.subscription && stripe) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(session.subscription);
+            if (sub?.current_period_end) {
+              endsAt = new Date(sub.current_period_end * 1000);
+            }
+          } catch (subErr) {
+            console.warn('Stripe: falha ao buscar subscription para endsAt:', subErr?.message);
+          }
+        }
+        // Fallback se não conseguir buscar a subscription: now + 30d.
+        if (!endsAt) {
+          endsAt = new Date();
+          endsAt.setUTCDate(endsAt.getUTCDate() + 30);
+        }
         await prisma.user.update({
           where: { id: userId },
-          data: { subscriptionStatus: 'active' },
+          data: {
+            subscriptionStatus: 'active',
+            subscriptionEndsAt: endsAt,
+            lastPaymentId: session.id,
+          },
         });
       }
     } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {

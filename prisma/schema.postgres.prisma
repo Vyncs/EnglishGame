@@ -29,10 +29,13 @@ model User {
   appleId    String? @unique
   facebookId String? @unique
 
-  // Assinatura (para integração com Stripe)
+  // Assinatura (para integração com Stripe / Mercado Pago)
   stripeCustomerId   String?   @unique
-  subscriptionStatus String?  // "active" (pago) | "vip" (cortesia) | "canceled" | "past_due" | null = free
+  subscriptionStatus String?  // "active" (pago) | "vip" (cortesia, ex. cupom) | "canceled" | "past_due" | null = free
   subscriptionEndsAt DateTime?
+  // Idempotência: ID do último pagamento processado (Mercado Pago / Stripe).
+  // Evita reprocessar a mesma notificação duas vezes.
+  lastPaymentId      String?
 
   // Cupom usado no cadastro (para vincular ao professor após verificação)
   pendingCouponCode  String?
@@ -46,6 +49,14 @@ model User {
   studentTeachers  TeacherStudent[] @relation("StudentTeachers")
   materials        TeacherMaterial[]
   assignedMaterials MaterialAssignment[]
+
+  // Retention engine
+  progress         UserProgress?
+  activities       UserActivity[]
+  missions         DailyMission[]
+  coachConversations EnglishCoachConversation[]
+  coachUsage       EnglishCoachUsage[]
+  coachMemory      CoachMemory?
 }
 
 model TeacherStudent {
@@ -131,6 +142,193 @@ model UserPreferences {
   id               String   @id @default(cuid())
   userId           String   @unique
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // IANA timezone (ex: "America/Sao_Paulo"). Null = default backend (BR).
+  timezone         String?
   selectedGroupId  String?
   readerTheme      String   @default("light") // light | dark | sepia
 }
+
+// ==========================================
+// ENGLISH COACH (chat com tutor IA)
+// ==========================================
+
+model EnglishCoachConversation {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String?
+  level               String   @default("beginner") // beginner | intermediate | advanced
+  mode                String   @default("free")     // free | travel | work | interview | restaurant | airport | pronunciation
+  // Pontuações de evolução (0-100). Pronúncia fica preparada p/ futuro.
+  scoreGrammar        Float    @default(0)
+  scoreVocabulary    Float    @default(0)
+  scoreFluency       Float    @default(0)
+  scorePronunciation Float    @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  messages            EnglishCoachMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+// Cota diária do English Coach por usuário (free tier).
+// dayKey é a data UTC em formato "YYYY-MM-DD". Reset por chave nova ao virar o dia.
+model EnglishCoachUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayKey    String   // YYYY-MM-DD (UTC)
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, dayKey])
+  @@index([dayKey])
+}
+
+model EnglishCoachMessage {
+  id              String   @id @default(cuid())
+  conversationId  String
+  conversation    EnglishCoachConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role            String   // "user" | "assistant"
+  content         String   // texto principal (mensagem do usuário OU "reply" do assistant)
+  // Campos didáticos (preenchidos só em mensagens do assistant)
+  correction      String?
+  explanation     String?
+  naturalExample  String?
+  nextQuestion    String?
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// ==========================================
+// MEMÓRIA PEDAGÓGICA (perfil agregado do aluno)
+// ==========================================
+// Singleton por user (1:1). Não armazena conversa bruta — apenas análise
+// agregada e progressiva. Atualizado por memoryAnalyzer a cada N mensagens.
+model CoachMemory {
+  id                          String   @id @default(cuid())
+  userId                      String   @unique
+  user                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ---- Perfil pedagógico (arrays JSON serializados) ----
+  weakPoints                  String   @default("[]") // JSON: string[]
+  strongPoints                String   @default("[]") // JSON: string[]
+  vocabularySeen              String   @default("[]") // JSON: string[]  (FIFO ~30 itens)
+  pronunciationIssues         String   @default("[]") // JSON: string[]
+  topicsOfInterest            String   @default("[]") // JSON: string[]
+  studyGoals                  String   @default("[]") // JSON: string[]
+
+  preferredLearningStyle      String?
+  cefrEstimate                String   @default("A1") // A1 | A2 | B1 | B2 | C1 | C2
+  confidenceLevel             Int      @default(50)  // 0-100
+  progressionScore            Int      @default(0)   // 0-100
+
+  conversationHistorySummary  String?  // 2-3 frases — onde a conversa parou
+  lastSessionInsights         String?  // 1-2 frases — insight acionável p/ próx sessão
+
+  // Bookkeeping de quando rodar o analyzer de novo (count global de mensagens
+  // do user no momento da última análise).
+  lastAnalyzedMessageCount    Int      @default(0)
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
+
+// ==========================================
+// RETENTION ENGINE — XP / Streak / Missions
+// ==========================================
+
+/// Estado denormalizado de progresso. Singleton por user.
+/// Otimizado para leitura rápida na home (1 row, 1 query).
+model UserProgress {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // XP & Level
+  totalXp         Int      @default(0)
+  currentLevel    Int      @default(1)
+
+  // Streak (denormalizado pra leitura rápida)
+  currentStreak   Int      @default(0)
+  bestStreak      Int      @default(0)
+  /// YYYY-MM-DD no fuso do user. Null = nunca teve atividade.
+  lastActiveDate  String?
+
+  // Streak freeze — preparado para premium V2
+  freezesAvailable Int     @default(0)
+  freezesUsedTotal Int     @default(0)
+  lastFreezeUsedAt DateTime?
+
+  // Counters lifetime — pra analytics e badges futuros
+  totalCardsReviewed Int   @default(0)
+  totalActiveDays    Int   @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Indexes pra rankings e leagues futuros
+  @@index([currentLevel])
+  @@index([totalXp])
+  @@index([currentStreak])
+}
+
+/// Log diário de atividade — uma row por dia ativo.
+/// Source of truth para streak (countedAsActive), missões e analytics de cohort.
+model UserActivity {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// YYYY-MM-DD no fuso do user.
+  date            String
+
+  // Counters por modo de estudo (granular pra missões + cohort)
+  cardsReviewed   Int      @default(0)
+  cardsCorrect    Int      @default(0)
+  bricksCompleted Int      @default(0)
+  memoryCompleted Int      @default(0)
+  readerChapters  Int      @default(0)
+  studyMinutes    Int      @default(0)
+
+  // XP ganho neste dia
+  xpEarned        Int      @default(0)
+
+  /// Marca se este dia conta para streak (atravessou threshold).
+  /// Idempotente: uma vez true, nunca volta a false.
+  countedAsActive Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date(sort: Desc)])
+  @@index([date])  // pra cohort analytics globais
+}
+
+/// Missões diárias geradas para um user em uma data específica.
+model DailyMission {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// YYYY-MM-DD — também serve como expiração (data passada = expirada).
+  date            String
+  /// Tipo da missão (ver constants/missions.js para enum).
+  type            String
+  target          Int
+  progress        Int       @default(0)
+  xpReward        Int
+
+  completedAt     DateTime?
+  /// Separa "completou" de "XP creditado" — evita dupla creditação.
+  rewardedAt      DateTime?
+
+  createdAt       DateTime  @default(now())
+
+  @@unique([userId, date, type])
+  @@index([userId, date])
+  @@index([userId, completedAt])
+}
+

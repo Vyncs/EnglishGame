@@ -11,7 +11,10 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "set-subscriber": "node scripts/set-subscriber.js",
-    "set-admin": "node scripts/set-admin.js"
+    "set-admin": "node scripts/set-admin.js",
+    "job:expire-subscriptions": "node scripts/expire-subscriptions.js",
+    "job:backfill-subscription-ends": "node scripts/backfill-subscription-ends.js",
+    "smoke": "node scripts/smoke-tests.js"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -19,6 +22,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.5.1",
     "jsonwebtoken": "^9.0.2",
     "passport": "^0.7.0",
     "passport-apple": "^2.0.2",
