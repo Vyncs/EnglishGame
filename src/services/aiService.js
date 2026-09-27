@@ -17,7 +17,9 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 // Gemini API base. 2.5-flash é o modelo com free tier ativo em 2026
 // (2.0-flash teve free tier descontinuado em vários projetos novos).
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// O gemini-2.5-flash saiu de circulação para contas novas: a API responde
+// 404 dizendo para migrar. GEMINI_MODEL continua permitindo trocar sem deploy.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
 const MAX_HISTORY = 12; // últimas N mensagens (user+assistant) enviadas como contexto
 
