@@ -1,6 +1,19 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/**
+ * Cliente do Resend criado sob demanda.
+ *
+ * Instanciar no topo do módulo fazia a falta de RESEND_API_KEY derrubar o
+ * servidor inteiro no import — o login parava por causa do e-mail. Aqui a
+ * ausência da chave vira um erro tratável de uma rota só.
+ */
+let resendClient = null;
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  if (!resendClient) resendClient = new Resend(key);
+  return resendClient;
+}
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@playfashcards.com.br';
 const RESEND_TEST_FROM = 'Play Flash Cards <onboarding@resend.dev>';
 
@@ -66,6 +79,14 @@ export async function sendVerificationEmail(to, code) {
 </html>
     `.trim(),
   };
+
+  const resend = getResend();
+  if (!resend) {
+    console.error('[email] RESEND_API_KEY ausente — e-mail de verificação não enviado.');
+    const e = new Error('Envio de e-mail não configurado no servidor');
+    e.status = 503;
+    throw e;
+  }
 
   // Tenta com o domínio configurado; se falhar (domínio não verificado), usa o remetente de teste do Resend
   const { error } = await resend.emails.send({
