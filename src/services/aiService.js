@@ -17,6 +17,29 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 // Gemini API base. 2.5-flash é o modelo com free tier ativo em 2026
 // (2.0-flash teve free tier descontinuado em vários projetos novos).
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+/** Status que valem outra tentativa: pico de demanda, limite momentâneo, falha transitória. */
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+/**
+ * fetch com novas tentativas em falha temporária.
+ *
+ * O Gemini responde 503 "experiencing high demand" com alguma frequência no
+ * free tier. Sem isso, um pico de alguns segundos vira a mensagem de fallback
+ * para o aluno — que é justamente o que ele não deve ver por causa da fila
+ * do provedor.
+ */
+async function fetchRetrying(url, init, { tries = 3, baseDelayMs = 700 } = {}) {
+  let res;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    res = await fetch(url, init);
+    if (res.ok || !RETRYABLE.has(res.status) || attempt === tries) return res;
+    const wait = baseDelayMs * attempt;
+    console.warn(`[english-coach] ${res.status} do provedor — nova tentativa em ${wait}ms (${attempt}/${tries - 1})`);
+    await new Promise((r) => setTimeout(r, wait));
+  }
+  return res;
+}
 // Alias, não versão fixa. Fixar um número (2.5, 3.8…) significa quebrar no dia
 // em que o Google aposentar aquela versão — foi o que derrubou o coach com o
 // 2.5-flash. O gemini-flash-latest sempre aponta para o Flash em vigor.
@@ -228,7 +251,7 @@ async function generateWithGemini({ level, mode, history, userMessage, memorySum
     },
   };
 
-  const res = await fetch(url, {
+  const res = await fetchRetrying(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -263,7 +286,7 @@ async function streamWithGemini({ level, mode, history, userMessage, memorySumma
     },
   };
 
-  const res = await fetch(url, {
+  const res = await fetchRetrying(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

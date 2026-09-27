@@ -17,8 +17,11 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // Modelos dedicados pra análise (podem ser mais baratos que o do chat).
 const OPENAI_ANALYZER_MODEL =
   process.env.OPENAI_MEMORY_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+// Alias, não versão fixa — mesmo motivo do aiService: o 2.5-flash foi
+// aposentado e este analisador continuou pedindo por ele, falhando a cada
+// mensagem enquanto a conversa em si já funcionava.
 const GEMINI_ANALYZER_MODEL =
-  process.env.GEMINI_MEMORY_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  process.env.GEMINI_MEMORY_MODEL || process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 // Roda análise quando o user tem ao menos N mensagens novas desde a última.
 const ANALYSIS_THRESHOLD = Number(process.env.COACH_MEMORY_ANALYZE_EVERY) || 10;
