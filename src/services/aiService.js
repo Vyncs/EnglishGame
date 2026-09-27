@@ -21,6 +21,13 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // 404 dizendo para migrar. GEMINI_MODEL continua permitindo trocar sem deploy.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
+// Diz no boot com o que o coach vai falar. Sem isto, a única forma de saber
+// qual provider e modelo estão valendo era mandar uma mensagem e ler o erro.
+console.log(
+  '[english-coach] IA:',
+  process.env.GEMINI_API_KEY ? `gemini (${GEMINI_MODEL})` : process.env.OPENAI_API_KEY ? `openai (${OPENAI_MODEL})` : 'NENHUM PROVIDER CONFIGURADO',
+);
+
 const MAX_HISTORY = 12; // últimas N mensagens (user+assistant) enviadas como contexto
 
 /**
@@ -227,7 +234,7 @@ async function generateWithGemini({ level, mode, history, userMessage, memorySum
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
-    console.error('[english-coach] Gemini error', res.status, errBody);
+    console.error('[english-coach] Gemini error', res.status, 'modelo:', GEMINI_MODEL, errBody);
     return buildFallbackReply(level);
   }
 
@@ -262,7 +269,7 @@ async function streamWithGemini({ level, mode, history, userMessage, memorySumma
 
   if (!res.ok || !res.body) {
     const errBody = await res.text?.().catch(() => '');
-    console.error('[english-coach] Gemini stream error', res.status, errBody);
+    console.error('[english-coach] Gemini stream error', res.status, 'modelo:', GEMINI_MODEL, errBody);
     const fb = buildFallbackReply(level);
     await emitFallbackAsStream(fb, onEvent);
     return fb;
