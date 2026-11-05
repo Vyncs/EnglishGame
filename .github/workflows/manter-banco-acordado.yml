@@ -1,0 +1,69 @@
+name: Manter banco acordado
+
+# O Supabase free pausa o projeto depois de ~7 dias com pouca atividade de banco
+# do usuário. A documentação deles diz que "algumas requisições por dia" já
+# bastam para escapar, então uma batida diária sobra — e ainda deixa margem
+# para o agendador do GitHub atrasar (cron de Actions não é horário exato).
+#
+# São dois caminhos independentes, e basta um dar certo:
+#   1. psql direto no Postgres  — só liga se existir o secret DATABASE_URL.
+#      É o único que continua funcionando se o backend estiver fora do ar.
+#   2. GET /api/health/db no backend — não precisa de segredo nenhum.
+#
+# Para ligar o caminho 1:
+#   gh secret set DATABASE_URL --repo Vyncs/EnglishGame
+#   (cole a mesma string que está no Render, a do pooler do Supabase)
+#
+# ATENÇÃO: o GitHub desliga workflows agendados depois de 60 dias sem commit
+# nenhum no repositório. Ele avisa por email e basta um clique para religar.
+
+on:
+  schedule:
+    - cron: '17 11 * * *' # 11:17 UTC = 08:17 em Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manter-banco-acordado
+  cancel-in-progress: false
+
+jobs:
+  acordar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      API_URL: ${{ vars.API_URL || 'https://englishgame-y5vg.onrender.com' }}
+
+    steps:
+      - name: SELECT 1 direto no Postgres
+        id: direto
+        if: ${{ env.DATABASE_URL != '' }}
+        continue-on-error: true
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc "select 'keepalive ' || now()"
+
+      - name: Acordar pelo backend
+        id: backend
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          echo "GET $API_URL/api/health/db"
+          resposta=$(curl -fsS --max-time 60 --retry 4 --retry-delay 15 --retry-all-errors "$API_URL/api/health/db")
+          echo "$resposta"
+          echo "$resposta" | grep -q '"db":"up"'
+
+      - name: Conferir que o banco recebeu atividade
+        if: ${{ always() }}
+        run: |
+          echo "psql direto: ${{ steps.direto.outcome }}"
+          echo "backend:     ${{ steps.backend.outcome }}"
+          if [ "${{ steps.direto.outcome }}" = "success" ] || [ "${{ steps.backend.outcome }}" = "success" ]; then
+            echo "Banco acordado hoje."
+          else
+            echo "::error::Nenhum dos dois caminhos chegou no banco. Sem isso o Supabase pausa o projeto em ~7 dias."
+            exit 1
+          fi
