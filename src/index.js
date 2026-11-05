@@ -25,6 +25,8 @@ import englishCoachMemoryRoutes from './routes/englishCoachMemory.js';
 import progressRoutes from './routes/progress.js';
 import missionsRoutes from './routes/missions.js';
 import activityRoutes from './routes/activity.js';
+import { standardLimiter } from './middleware/rateLimit.js';
+import { pingDb, startDbHeartbeat } from './utils/dbHeartbeat.js';
 
 const app = express();
 // Em produção (Render/Netlify) a app fica atrás de proxy. Sem isso, req.ip
@@ -82,6 +84,25 @@ function sendHealth(_req, res) {
 app.get('/health', sendHealth);
 app.get('/api/health', sendHealth);
 
+/**
+ * Health que ENCOSTA no banco — é o que o cron do GitHub Actions chama uma vez
+ * por dia para o Supabase free não pausar o projeto por inatividade.
+ *
+ * Fica sem autenticação de propósito: assim o workflow não precisa guardar
+ * segredo nenhum. O que ele faz é um `SELECT 1`, e o standardLimiter corta em
+ * 100 chamadas por IP a cada 15 min, então não dá para usar como alavanca de
+ * carga no banco. Nada aqui devolve detalhe de conexão para quem chamou.
+ */
+app.get('/api/health/db', standardLimiter, async (_req, res) => {
+  try {
+    const ms = await pingDb();
+    res.json({ ok: true, db: 'up', ms, ts: new Date().toISOString() });
+  } catch (e) {
+    console.error('[health/db] banco não respondeu:', e.message);
+    res.status(503).json({ ok: false, db: 'down' });
+  }
+});
+
 // Frontend estático (build do GameEnglish-main/dist) — serve o SPA na mesma origem
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIST = path.resolve(__dirname, '../../GameEnglish-main/dist');
@@ -102,4 +123,6 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`API rodando em http://localhost:${PORT}`);
+  // Mantém o Supabase free acordado enquanto o servidor estiver de pé.
+  startDbHeartbeat();
 });
